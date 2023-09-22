@@ -1,0 +1,94 @@
+#define BLYNK_TEMPLATE_ID "TMPLk-JAaQ8z"
+#define BLYNK_TEMPLATE_NAME "Ph sensor with Blynk"
+#define BLYNK_AUTH_TOKEN "_8qAHlAQ_cnuVAk6KxsaeBzCb8cDTEOZ"
+#define BLYNK_PRINT Serial
+
+#include <WiFi.h>
+#include <BlynkSimpleEsp32.h>
+
+#define RX_PIN 16
+#define TX_PIN 17
+#define SERIAL_BAUD 9600
+#define EC_PIN 33
+#define PH_PIN 34
+#define RELAY1_PIN 26
+#define RELAY2_PIN 27
+#define PH_UP_PIN 18
+#define PH_DOWN_PIN 19
+#define NPK_PIN 23
+#define NUTRIENT_PIN 22
+
+float ecValue, pHValue, nutrientValue;
+bool isEcSensorActive = true;  // Flag to indicate which sensor is currently active
+
+char auth[] = "_8qAHlAQ_cnuVAk6KxsaeBzCb8cDTEOZ";
+char ssid[] = "IOT";
+char pass[] = "12345678";
+
+void setup() {
+  Serial.begin(SERIAL_BAUD);
+  pinMode(RELAY1_PIN, OUTPUT);
+  pinMode(RELAY2_PIN, OUTPUT);
+  pinMode(PH_UP_PIN, OUTPUT);
+  pinMode(PH_DOWN_PIN, OUTPUT);
+  pinMode(NPK_PIN, OUTPUT);
+  pinMode(NUTRIENT_PIN, OUTPUT);
+  switchSensors();
+  Blynk.begin(auth, ssid, pass);
+}
+
+void loop() {
+  if (isEcSensorActive) {
+    // Read EC sensor value
+    float ecVoltage = analogRead(EC_PIN) / 4095.0 * 3.3;  // Read voltage from EC sensor
+    ecValue = 1000 * ecVoltage / 820;  // Convert to EC value
+    Serial.print("EC value: ");
+    Serial.print(ecValue, 2);
+    Serial.println(" ms/cm");
+    Blynk.virtualWrite(V1, ecValue);
+    // Control NPK and nutrient solution motors based on EC value
+    if (ecValue > 1.0) {
+      digitalWrite(NPK_PIN, HIGH);
+      digitalWrite(NUTRIENT_PIN, HIGH);
+    } else {
+      digitalWrite(NPK_PIN, LOW);
+      digitalWrite(NUTRIENT_PIN, LOW);
+    }
+  } else {
+    // Read pH sensor value
+    float phVoltage = analogRead(PH_PIN) / 4095.0 * 3.3;  // Read voltage from pH sensor
+    pHValue = -5.7 * phVoltage + 21.34;  // Convert to pH value using new equation
+    Serial.print("pH value: ");
+    Serial.println(pHValue, 2);
+    Blynk.virtualWrite(V0, pHValue);
+    // Control pH up/down motors based on pH value
+    if (pHValue < 6.0) {
+      digitalWrite(PH_UP_PIN, HIGH);
+      digitalWrite(PH_DOWN_PIN, LOW);
+    } else if (pHValue > 7.0) {
+      digitalWrite(PH_UP_PIN, LOW);
+      digitalWrite(PH_DOWN_PIN, HIGH);
+    } else {
+      digitalWrite(PH_UP_PIN, LOW);
+      digitalWrite(PH_DOWN_PIN, LOW);
+    }
+  }
+  Blynk.run();
+  delay(1000);
+  switchSensors();  // Call the function to switch sensors
+}
+
+void switchSensors() {
+  if (isEcSensorActive) {
+digitalWrite(RELAY1_PIN, LOW); // Deactivate EC sensor
+digitalWrite(RELAY2_PIN, HIGH); // Activate pH sensor
+isEcSensorActive = false;
+} else {
+digitalWrite(RELAY1_PIN, HIGH); // Activate EC sensor
+digitalWrite(RELAY2_PIN, LOW); // Deactivate pH sensor
+isEcSensorActive = true;
+}
+}
+
+
+

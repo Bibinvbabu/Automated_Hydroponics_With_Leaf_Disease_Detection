@@ -1,0 +1,101 @@
+import cv2
+import numpy as np
+import tensorflow as tf
+
+# Load the trained model
+model = tf.keras.models.load_model('keras_model.h5')
+model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
+
+# Define classes and corresponding colors
+classes = ['Bacterial spot', 'Early blight', 'Late blight', 'Leaf Mold', 'Septoria leaf spot', 'Spider mites', 'Target Spot', 'Yellow leaf curl virus', 'Mosaic virus', 'Healthy']
+colors = [(0, 0, 255), (0, 255, 0), (255, 0, 0), (0, 255, 255), (255, 0, 255), (255, 255, 0), (255, 255, 255), (128, 0, 0), (0, 128, 0), (0, 255, 0)]
+
+# Open the webcam
+cap = cv2.VideoCapture(0)
+
+# Get the width and height of the frame
+width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+
+while True:
+    # Capture frame-by-frame
+    ret, frame = cap.read()
+
+    # If frame not captured, skip the rest of the loop
+    if not ret:
+        continue
+
+    # Resize the frame
+    resized_frame = cv2.resize(frame, (224, 224))
+
+    # Preprocess the frame
+    preprocessed_frame = tf.keras.applications.mobilenet_v2.preprocess_input(np.array([resized_frame]))
+
+    # Make a prediction
+    prediction = model.predict(preprocessed_frame)
+
+    # Get the predicted class
+    try:
+        predicted_class = classes[np.argmax(prediction[0])]
+        color = colors[np.argmax(prediction[0])]
+    except IndexError:
+        predicted_class = "Unknown"
+        color = (0, 0, 0)
+
+    # Find contours in the frame
+    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    _, thresh = cv2.threshold(gray, 100, 255, cv2.THRESH_BINARY_INV)
+    contours, _ = cv2.findContours(thresh, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+
+    # Find the contour with the largest area
+    max_area = 0
+    max_contour = None
+    for contour in contours:
+        area = cv2.contourArea(contour)
+        if area > max_area:
+            max_area = area
+            max_contour = contour
+
+    # If a contour is found, adjust the detection box
+    if max_contour is not None:
+        # Find the minimum area rectangle that encloses the contour
+        rect = cv2.minAreaRect(max_contour)
+        box = cv2.boxPoints(rect)
+        box = np.int0(box)
+
+        # Find the center of the rectangle
+        cx = int(rect[0][0])
+        cy = int(rect[0][1])
+
+        # Find the width and height of the rectangle
+        w = int(rect[1][0])
+        h = int(rect[1][1])
+
+        # Adjust the detection box
+        box_x = int(cx - w/2)
+        box_y = int(cy - h/2)
+        box_width = int(w)
+        box_height = int(h)
+    else:
+        # If no contour is found, set the default position and size of the detection box
+        box_x = int(width/2 - 50)
+        box_y = int(height/2 - 50)
+        box_width = 100
+        box_height = 100
+
+    # Draw the detection box
+    cv2.rectangle(frame, (box_x, box_y), (box_x + box_width, box_y + box_height), color, 2)
+
+    # Draw the predicted class on the frame
+    cv2.putText(frame, predicted_class, (box_x, box_y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
+
+     # Display the resulting frame
+    cv2.imshow('Tomato Leaf Disease Detection', frame)
+
+    # Quit the program when 'q' is pressed
+    if cv2.waitKey(1) & 0xFF == ord('q'):
+        break
+
+    # Release the capture and close all windows
+    cap.release()
+    cv2.destroyAllWindows()
